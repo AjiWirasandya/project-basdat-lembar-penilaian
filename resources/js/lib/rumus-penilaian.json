@@ -1,0 +1,14 @@
+{
+  "nilai_maksimum": 90,
+  "predikat": [
+    { "min": 86, "max": 90, "label": "Istimewa" },
+    { "min": 78, "max": 85, "label": "Sangat Baik" },
+    { "min": 65, "max": 77, "label": "Baik" },
+    { "min": 0,  "max": 64, "label": "Cukup" }
+  ],
+  "tipe_penilaian": "finalisasi", 
+  "rumus": {
+    "cek": "nilai_maksimum - total_kesalahan",
+    "finalisasi": "(sum_bobot_chapter_total_nilai) / sum_bobot_chapter"
+  }
+}
