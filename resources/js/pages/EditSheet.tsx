@@ -1,22 +1,58 @@
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { useState } from 'react';
-// @ts-ignore
 import rumus from '../lib/rumus-penilaian.json';
 
-function hitungNilaiFinal(chapters) {
-    const nilaiMaks = rumus.nilai_maksimum;
-    const chapterResults = chapters.map((ch) => {
-        const totalKesalahan = ch.aspek.reduce((a, asp) => a + asp.subAspek.reduce((b, sa) => b + Number(sa.kesalahan || 0), 0), 0);
+// Tipe data yang lebih spesifik
+interface SubAspek {
+    name: string;
+    kesalahan: number;
+}
+interface Aspek {
+    name: string;
+    subAspek: SubAspek[];
+}
+interface Chapter {
+    name: string;
+    bobot: number;
+    aspek: Aspek[];
+}
+interface Penilaian {
+    id: number;
+    project_name: string;
+    penguji: string;
+    catatan: string;
+    chapters: Array<{
+        nama_chapter: string;
+        bobot: number;
+        aspeks: Array<{
+            nama_aspek: string;
+            sub_aspeks: Array<{
+                nama_sub_aspek: string;
+                kesalahan: number;
+            }>;
+        }>;
+    }>;
+}
+interface Predikat {
+    min: number;
+    max: number;
+    label: string;
+}
+
+function hitungNilaiFinal(chapters: Chapter[]): { totalKesalahan: number, totalNilai: number, nilaiFinal: number, predikat: string } {
+    const nilaiMaks = (rumus as { nilai_maksimum: number; predikat: Predikat[] }).nilai_maksimum;
+    const chapterResults = chapters.map((ch: Chapter) => {
+        const totalKesalahan = ch.aspek.reduce((a: number, asp: Aspek) => a + asp.subAspek.reduce((b: number, sa: SubAspek) => b + Number(sa.kesalahan || 0), 0), 0);
         const totalNilai = nilaiMaks - totalKesalahan;
         return { bobot: Number(ch.bobot), totalKesalahan, totalNilai };
     });
-    const sumBobot = chapterResults.reduce((a, c) => a + c.bobot, 0);
-    const sumBobotNilai = chapterResults.reduce((a, c) => a + (c.bobot * c.totalNilai), 0);
+    const sumBobot = chapterResults.reduce((a: number, c: { bobot: number }) => a + c.bobot, 0);
+    const sumBobotNilai = chapterResults.reduce((a: number, c: { bobot: number; totalNilai: number }) => a + (c.bobot * c.totalNilai), 0);
     const nilaiFinal = sumBobot ? Math.round((sumBobotNilai / sumBobot) * 10) / 10 : 0;
-    const totalKesalahan = chapterResults.reduce((a, c) => a + c.totalKesalahan, 0);
+    const totalKesalahan = chapterResults.reduce((a: number, c: { totalKesalahan: number }) => a + c.totalKesalahan, 0);
     let predikat = "Cukup";
-    for (const p of rumus.predikat) {
+    for (const p of (rumus as { nilai_maksimum: number; predikat: Predikat[] }).predikat) {
         if (nilaiFinal >= p.min && nilaiFinal <= p.max) {
             predikat = p.label;
             break;
@@ -25,17 +61,17 @@ function hitungNilaiFinal(chapters) {
     return { totalKesalahan, totalNilai: Math.round(nilaiFinal), nilaiFinal, predikat };
 }
 
-export default function EditSheet({ penilaian }) {
+export default function EditSheet({ penilaian }: { penilaian: Penilaian }) {
     const [projectName, setProjectName] = useState(penilaian.project_name || '');
     const [penguji, setPenguji] = useState(penilaian.penguji || '');
     const [catatan, setCatatan] = useState(penilaian.catatan || '');
-    const [chapters, setChapters] = useState(
-        (penilaian.chapters || []).map((ch, idx) => ({
+    const [chapters, setChapters] = useState<Chapter[]>(
+        (penilaian.chapters || []).map((ch) => ({
             name: ch.nama_chapter,
             bobot: ch.bobot,
-            aspek: (ch.aspeks || []).map(a => ({
+            aspek: (ch.aspeks || []).map((a) => ({
                 name: a.nama_aspek,
-                subAspek: (a.sub_aspeks || []).map(s => ({
+                subAspek: (a.sub_aspeks || []).map((s) => ({
                     name: s.nama_sub_aspek,
                     kesalahan: s.kesalahan
                 }))
@@ -45,18 +81,16 @@ export default function EditSheet({ penilaian }) {
 
     // Handler untuk chapter, aspek, sub aspek (sama seperti CreateSheet)
     const addChapter = () => setChapters([...chapters, { name: '', bobot: 100, aspek: [{ name: '', subAspek: [{ name: '', kesalahan: 0 }] }] }]);
-    const removeChapter = (idx) => setChapters(chapters.filter((_, i) => i !== idx));
-    const updateChapter = (idx, key, value) => setChapters(chapters.map((c, i) => i === idx ? { ...c, [key]: value } : c));
-    const addAspek = (chapterIdx) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: [...c.aspek, { name: '', subAspek: [{ name: '', kesalahan: 0 }] }] } : c));
-    const removeAspek = (chapterIdx, aspekIdx) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.filter((_, j) => j !== aspekIdx) } : c));
-    const updateAspek = (chapterIdx, aspekIdx, key, value) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, [key]: value } : a) } : c));
-    const addSubAspek = (chapterIdx, aspekIdx) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: [...a.subAspek, { name: '', kesalahan: 0 }] } : a) } : c));
-    const removeSubAspek = (chapterIdx, aspekIdx, subIdx) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: a.subAspek.filter((_, k) => k !== subIdx) } : a) } : c));
-    const updateSubAspek = (chapterIdx, aspekIdx, subIdx, key, value) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: a.subAspek.map((s, k) => k === subIdx ? { ...s, [key]: value } : s) } : a) } : c));
+    const removeChapter = (idx: number) => setChapters(chapters.filter((_, i) => i !== idx));
+    const updateChapter = (idx: number, key: keyof Chapter, value: string | number | Aspek[]) => setChapters(chapters.map((c, i) => i === idx ? { ...c, [key]: value } : c));
+    const addAspek = (chapterIdx: number) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: [...c.aspek, { name: '', subAspek: [{ name: '', kesalahan: 0 }] }] } : c));
+    const addSubAspek = (chapterIdx: number, aspekIdx: number) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: [...a.subAspek, { name: '', kesalahan: 0 }] } : a) } : c));
+    const removeSubAspek = (chapterIdx: number, aspekIdx: number, subIdx: number) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: a.subAspek.filter((_, k) => k !== subIdx) } : a) } : c));
+    const updateSubAspek = (chapterIdx: number, aspekIdx: number, subIdx: number, key: keyof SubAspek, value: string | number) => setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: a.subAspek.map((s, k) => k === subIdx ? { ...s, [key]: value } : s) } : a) } : c));
 
     const hasilRealtime = hitungNilaiFinal(chapters);
 
-    const handleUpdate = (e) => {
+    const handleUpdate = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         // Validasi (sama seperti create)
         if (!projectName.trim()) {
@@ -67,7 +101,7 @@ export default function EditSheet({ penilaian }) {
             alert('Nama penguji harus diisi');
             return;
         }
-        const hasEmptyChapter = chapters.some(ch => !ch.name.trim());
+        const hasEmptyChapter = chapters.some((ch) => !ch.name.trim());
         if (hasEmptyChapter) {
             alert('Nama chapter tidak boleh kosong');
             return;
@@ -88,7 +122,7 @@ export default function EditSheet({ penilaian }) {
             chapters: chapters.map((ch, idx) => ({
                 nama_chapter: ch.name.trim(),
                 bobot: ch.bobot,
-                aspek: ch.aspek.map(a => ({
+                aspek: ch.aspek.map((a) => ({
                     nama_aspek: a.name.trim() || `Aspek ${idx + 1}`,
                     sub_aspek: a.subAspek.map((s, subIdx) => ({
                         nama_sub_aspek: s.name.trim() || `Sub Aspek ${subIdx + 1}`,

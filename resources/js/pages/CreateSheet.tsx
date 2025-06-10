@@ -1,22 +1,41 @@
 import { Head } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { useState } from 'react';
-import { useForm, router } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
 
 // Tambahkan tipe untuk import JSON agar tidak dianggap {} oleh TypeScript
-// @ts-ignore
 import rumus from '../lib/rumus-penilaian.json';
 
-function getDefaultSubAspek() {
+// Tipe data yang lebih spesifik
+interface SubAspek {
+    name: string;
+    kesalahan: number;
+}
+interface Aspek {
+    name: string;
+    subAspek: SubAspek[];
+}
+interface Chapter {
+    name: string;
+    bobot: number;
+    aspek: Aspek[];
+}
+interface Predikat {
+    min: number;
+    max: number;
+    label: string;
+}
+
+function getDefaultSubAspek(): SubAspek[] {
     return [{ name: '', kesalahan: 0 }];
 }
-function getDefaultAspek() {
+function getDefaultAspek(): Aspek {
     return {
         name: '',
         subAspek: getDefaultSubAspek(),
     };
 }
-function getDefaultChapter() {
+function getDefaultChapter(): Chapter {
     return {
         name: 'Chapter 1',
         bobot: 100,
@@ -36,23 +55,20 @@ interface SheetSummary {
     aspekCount: number;
 }
 
-function hitungNilaiFinal(chapters: any[]): { totalKesalahan: number, totalNilai: number, nilaiFinal: number, predikat: string } {
-    // @ts-ignore
-    const nilaiMaks = rumus.nilai_maksimum;
+function hitungNilaiFinal(chapters: Chapter[]): { totalKesalahan: number, totalNilai: number, nilaiFinal: number, predikat: string } {
+    const nilaiMaks = (rumus as { nilai_maksimum: number; predikat: Predikat[] }).nilai_maksimum;
     // Hitung total kesalahan per chapter
-    const chapterResults = chapters.map((ch: any) => {
-        const totalKesalahan = ch.aspek.reduce((a: number, asp: any) => a + asp.subAspek.reduce((b: number, sa: any) => b + Number(sa.kesalahan || 0), 0), 0);
+    const chapterResults = chapters.map((ch: Chapter) => {
+        const totalKesalahan = ch.aspek.reduce((a: number, asp: Aspek) => a + asp.subAspek.reduce((b: number, sa: SubAspek) => b + Number(sa.kesalahan || 0), 0), 0);
         const totalNilai = nilaiMaks - totalKesalahan;
         return { bobot: Number(ch.bobot), totalKesalahan, totalNilai };
     });
-    const sumBobot = chapterResults.reduce((a: number, c: any) => a + c.bobot, 0);
-    const sumBobotNilai = chapterResults.reduce((a: number, c: any) => a + (c.bobot * c.totalNilai), 0);
+    const sumBobot = chapterResults.reduce((a: number, c: { bobot: number }) => a + c.bobot, 0);
+    const sumBobotNilai = chapterResults.reduce((a: number, c: { bobot: number; totalNilai: number }) => a + (c.bobot * c.totalNilai), 0);
     const nilaiFinal = sumBobot ? Math.round((sumBobotNilai / sumBobot) * 10) / 10 : 0;
-    const totalKesalahan = chapterResults.reduce((a: number, c: any) => a + c.totalKesalahan, 0);
-    // @ts-ignore
+    const totalKesalahan = chapterResults.reduce((a: number, c: { totalKesalahan: number }) => a + c.totalKesalahan, 0);
     let predikat = "Cukup";
-    // @ts-ignore
-    for (const p of rumus.predikat) {
+    for (const p of (rumus as { nilai_maksimum: number; predikat: Predikat[] }).predikat) {
         if (nilaiFinal >= p.min && nilaiFinal <= p.max) {
             predikat = p.label;
             break;
@@ -65,10 +81,9 @@ export default function CreateSheet() {
     const [projectName, setProjectName] = useState('');
     const [penguji, setPenguji] = useState('');
     const [catatan, setCatatan] = useState('');
-    const [chapters, setChapters] = useState([getDefaultChapter()]);
+    const [chapters, setChapters] = useState<Chapter[]>([getDefaultChapter()]);
     const [savedSheets, setSavedSheets] = useState<SheetSummary[]>([]);
     const [showSummary, setShowSummary] = useState(false);
-    const [editIndex, setEditIndex] = useState<number | null>(null);
 
     // Reset form
     const resetForm = () => {
@@ -81,7 +96,7 @@ export default function CreateSheet() {
     // Handler untuk chapter
     const addChapter = () => setChapters([...chapters, getDefaultChapter()]);
     const removeChapter = (idx: number) => setChapters(chapters.filter((_, i) => i !== idx));
-    const updateChapter = (idx: number, key: string, value: any) => {
+    const updateChapter = (idx: number, key: keyof Chapter, value: string | number | Aspek[]) => {
         setChapters(chapters.map((c, i) => i === idx ? { ...c, [key]: value } : c));
     };
 
@@ -89,10 +104,7 @@ export default function CreateSheet() {
     const addAspek = (chapterIdx: number) => {
         setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: [...c.aspek, getDefaultAspek()] } : c));
     };
-    const removeAspek = (chapterIdx: number, aspekIdx: number) => {
-        setChapters(chapters.map((c, i) => i === chapterIdx ? { ...c, aspek: c.aspek.filter((_, j) => j !== aspekIdx) } : c));
-    };
-    const updateAspek = (chapterIdx: number, aspekIdx: number, key: string, value: any) => {
+    const updateAspek = (chapterIdx: number, aspekIdx: number, key: keyof Aspek, value: string | SubAspek[]) => {
         setChapters(chapters.map((c, i) => i === chapterIdx ? {
             ...c,
             aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, [key]: value } : a)
@@ -101,18 +113,18 @@ export default function CreateSheet() {
 
     // Handler untuk sub aspek
     const addSubAspek = (chapterIdx: number, aspekIdx: number) => {
-    setChapters(chapters.map((c, i) => i === chapterIdx ? {
-        ...c,
-        aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: [...a.subAspek, { name: '', kesalahan: 0 }] } : a)
-    } : c));
-};
+        setChapters(chapters.map((c, i) => i === chapterIdx ? {
+            ...c,
+            aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: [...a.subAspek, { name: '', kesalahan: 0 }] } : a)
+        } : c));
+    };
     const removeSubAspek = (chapterIdx: number, aspekIdx: number, subIdx: number) => {
         setChapters(chapters.map((c, i) => i === chapterIdx ? {
             ...c,
             aspek: c.aspek.map((a, j) => j === aspekIdx ? { ...a, subAspek: a.subAspek.filter((_, k) => k !== subIdx) } : a)
         } : c));
     };
-    const updateSubAspek = (chapterIdx: number, aspekIdx: number, subIdx: number, key: string, value: any) => {
+    const updateSubAspek = (chapterIdx: number, aspekIdx: number, subIdx: number, key: keyof SubAspek, value: string | number) => {
         setChapters(chapters.map((c, i) => i === chapterIdx ? {
             ...c,
             aspek: c.aspek.map((a, j) => j === aspekIdx ? {
@@ -190,7 +202,6 @@ export default function CreateSheet() {
         setProjectName(sheet.projectName);
         // Data lain (penguji, catatan, chapters) bisa di-extend jika ingin edit penuh
         setShowSummary(false);
-        setEditIndex(idx);
     };
 
     // Hapus sheet
@@ -232,7 +243,7 @@ export default function CreateSheet() {
                     {showSummary ? (
                         <div>
                             <div className="flex justify-center mb-8">
-                                <button className="bg-gradient-to-b from-blue-500 to-blue-700 text-white px-8 py-2 rounded shadow font-semibold text-base hover:from-blue-600 hover:to-blue-800" onClick={() => { setShowSummary(false); resetForm(); setEditIndex(null); }}>Buat Penilaian Baru</button>
+                                <button className="bg-gradient-to-b from-blue-500 to-blue-700 text-white px-8 py-2 rounded shadow font-semibold text-base hover:from-blue-600 hover:to-blue-800" onClick={() => { setShowSummary(false); resetForm(); }}>Buat Penilaian Baru</button>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                                 {savedSheets.map((sheet, idx) => (
@@ -383,7 +394,7 @@ export default function CreateSheet() {
                             {/* Tombol Aksi */}
                             <div className="flex flex-col md:flex-row gap-4 mt-8">
                                 <button type="submit" className="bg-black text-white px-6 py-2 rounded shadow font-semibold flex-1">Simpan Penilaian</button>
-                                <button type="button" className="bg-gray-200 text-black px-6 py-2 rounded shadow font-semibold flex-1" onClick={() => { setShowSummary(true); setEditIndex(null); }}>Batal</button>
+                                <button type="button" className="bg-gray-200 text-black px-6 py-2 rounded shadow font-semibold flex-1" onClick={() => { setShowSummary(true); }}>Batal</button>
                             </div>
                         </form>
                     )}
