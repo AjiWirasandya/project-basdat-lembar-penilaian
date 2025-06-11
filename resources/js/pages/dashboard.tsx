@@ -9,7 +9,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-// Tambahkan tipe untuk props
 interface SubAspek { nama_sub_aspek: string; kesalahan: number; }
 interface Aspek { nama_aspek: string; sub_aspeks?: SubAspek[]; }
 interface Chapter { nama_chapter: string; bobot: number; aspeks?: Aspek[]; }
@@ -40,7 +39,6 @@ export default function Dashboard({ penilaians = [], summary = { totalPenilaian:
         if (confirm('Yakin hapus lembar penilaian ini?')) {
             router.delete(`/penilaian/${id}`, {
                 onSuccess: () => {
-                    // Inertia otomatis refresh dashboard
                 }
             });
         }
